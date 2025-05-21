@@ -22,3 +22,10 @@ services:
       - "5050:80"  # Expose pgAdmin on port 5050
     depends_on:
       - db  # pgAdmin starts after the db container
+
+  api-server:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
