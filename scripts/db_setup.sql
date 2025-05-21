@@ -8,7 +8,7 @@ CREATE TABLE inventory (
 
 -- Primary & Foreign Keys
 CREATE TABLE transactions (
-    transaction_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    transaction_id uuid DEFAULT gen_random_uuid() NOT NULL,  -- Note that the default transaction id is a randomly generated uuid
 	item text NOT NULL,
     quantity int NOT NULL,
 	PRIMARY KEY (transaction_id),
