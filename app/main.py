@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-import psycopg
+from utils import DBTools
 
 app = FastAPI()
 
@@ -12,6 +12,11 @@ async def hello():
 async def ping():
     return {"message": "Ping endpoint functioning"}
 
-app.put("/inventory")
-def new_item():
+@app.put("/inventory")
+def new_stock():
     pass
+
+@app.get("/inventory")
+def get_inventory():
+    dbsession = DBTools()
+    dbsession.get_table_as_array('inventory')
