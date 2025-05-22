@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from dotenv import load_dotenv
 
-class Utils:
+class DBTools:
     def __init__(self):
         """Establishes a connection with the database upon instantiation.
         """
@@ -31,6 +31,9 @@ class Utils:
             insert_query = f"INSERT INTO inventory (item, description, price) VALUES ({items[i]}, {descriptions[i]}, {prices[i]})"
             self.cursor.execute(insert_query)
 
-
+    def get_table_as_array(self, table_name: str):
+        self.cursor.execute(f"SELECT * FROM {table_name};")
+        data= self.cursor.fetchall()
+        return data
         
         
