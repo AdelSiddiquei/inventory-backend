@@ -6,6 +6,7 @@ import os
 from fastapi import FastAPI, HTTPException, Request
 import psycopg
 from pydantic import BaseModel
+from uuid import UUID
 
 app = FastAPI()
 
@@ -25,14 +26,19 @@ class InventoryRequest(BaseModel):
     description: str
     price: float
 
-class TransactionsRequest(BaseModel):
+
+class TransactionsPost(BaseModel):
+    item: str
+    quantity: int
+
+class TransactionsPatch(BaseModel):
+    uuid: UUID
     item: str
     quantity: int
 
 
-
 # Inventory endpoints
-@app.post("/inventory/")
+@app.post("/inventory")
 def new_item(body: InventoryRequest):
     try:
         with psycopg.connect(
@@ -41,8 +47,8 @@ def new_item(body: InventoryRequest):
             port=os.getenv("POSTGRES_PORT"),
             user=os.getenv("POSTGRES_USER"),
             password=os.getenv("POSTGRES_PASSWORD"),
+            autocommit=True,
         ) as conn:
-            conn.autocommit = True
             with conn.cursor() as cursor:
                 query = f"INSERT INTO inventory (item, description, price) VALUES ('{body.item}', '{body.description}', {body.price})"
                 cursor.execute(query)
@@ -55,7 +61,7 @@ def new_item(body: InventoryRequest):
                 }
             }
     except Exception as e:
-        return HTTPException(500, "There was an error, try again later.")
+        raise HTTPException(status_code=500, detail=f"There was an error: {str(e)}")
 
 
 @app.get("/inventory")
@@ -75,7 +81,7 @@ def get_items():
 
         return {"data": {"inventory": data}}
     except Exception as e:
-        return HTTPException(500, "There was an error, try again later.")
+        raise HTTPException(status_code=500, detail=f"There was an error: {str(e)}")
 
 
 @app.delete("/inventory/{item}")
@@ -92,17 +98,14 @@ def remove_item(item):
             with conn.cursor() as cursor:
                 query = f"DELETE FROM inventory WHERE item = '{item}'"
                 cursor.execute(query)
+                if cursor.rowcount == 0:
+                    return {
+                        "data": {"message": f"Item '{item}' not found, nothing deleted"}
+                    }
 
-        return {
-            "data": {
-                "message": "Delete successful",
-                "item": item,
-                "description": description,
-                "price": price,
-            }
-        }
+        return {"data": {"message": "Delete successful", "item": item}}
     except Exception as e:
-        return HTTPException(500, "There was an error, try again later.")
+        raise HTTPException(status_code=500, detail=f"There was an error: {str(e)}")
 
 
 @app.patch("/inventory")
@@ -119,15 +122,28 @@ def update_item(body: InventoryRequest):
             with conn.cursor() as cursor:
                 query = f"UPDATE inventory SET description = '{body.description}', price = {body.price} WHERE item = '{body.item}';"
                 cursor.execute(query)
+                if cursor.rowcount == 0:
+                    return {
+                        "data": {
+                            "message": f"Item '{body.item}' not found, nothing updated"
+                        }
+                    }
 
-        return {"data": {"message": "Update successful", "item": body.item, "description": body.description, "price": body.price}}
+        return {
+            "data": {
+                "message": "Update successful",
+                "item": body.item,
+                "description": body.description,
+                "price": body.price,
+            }
+        }
     except Exception as e:
-        return HTTPException(500, "There was an error, try again later.")
+        raise HTTPException(status_code=500, detail=f"There was an error: {str(e)}")
 
 
 # Transactions endpoints
-@app.post("/transactions/")
-def new_order(body: TransactionsRequest):
+@app.post("/transactions")
+def new_order(body: TransactionsPost):
     try:
         with psycopg.connect(
             dbname=os.getenv("POSTGRES_DBNAME"),
@@ -135,24 +151,26 @@ def new_order(body: TransactionsRequest):
             port=os.getenv("POSTGRES_PORT"),
             user=os.getenv("POSTGRES_USER"),
             password=os.getenv("POSTGRES_PASSWORD"),
+            autocommit=True,
         ) as conn:
-            conn.autocommit = True
             with conn.cursor() as cursor:
-                query = f"INSERT INTO transactions (item, quantity) VALUES ('{body.item}', {body.quantity})"
+                query = f"INSERT INTO transactions (item, quantity) VALUES ('{body.item}', {body.quantity}) RETURNING transaction_id"
                 cursor.execute(query)
+                transaction_id = cursor.fetchone()[0]
             return {
                 "data": {
                     "message": "Added successfully",
+                    "transaction_id": str(transaction_id),
                     "item": body.item,
                     "quantity": body.quantity,
                 }
             }
     except Exception as e:
-        return HTTPException(500, "There was an error, try again later.")
+        raise HTTPException(status_code=500, detail=f"There was an error: {str(e)}")
 
 
 @app.get("/transactions")
-def get_orders(table_name: str):
+def get_orders():
     try:
         with psycopg.connect(
             dbname=os.getenv("POSTGRES_DBNAME"),
@@ -162,13 +180,13 @@ def get_orders(table_name: str):
             password=os.getenv("POSTGRES_PASSWORD"),
         ) as conn:
             with conn.cursor() as cursor:
-                query = "SELECT * FROM inventory;"
+                query = "SELECT * FROM transactions;"
                 cursor.execute(query)
                 data = cursor.fetchall()
 
-        return {"data": {"inventory": data}}
+        return {"data": {"transactions": data}}
     except Exception as e:
-        return HTTPException(500, "There was an error, try again later.")
+        raise HTTPException(status_code=500, detail=f"There was an error: {str(e)}")
 
 
 @app.delete("/transactions/{transaction_id}")
@@ -183,21 +201,46 @@ def remove_order(transaction_id):
             autocommit=True,
         ) as conn:
             with conn.cursor() as cursor:
-                query = f"DELETE FROM transactions WHERE transaction_id = '{transaction_id}'"
+                query = f"DELETE FROM transactions WHERE transaction_id = {transaction_id}"
                 cursor.execute(query)
+                if cursor.rowcount == 0:
+                    return {
+                        "data": {"message": f"Item '{item}' not found, nothing deleted"}
+                    }
+
+        return {"data": {"message": "Delete successful", "transaction_id": transaction_id}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"There was an error: {str(e)}")
+
+
+@app.patch("/transactions")
+def update_order(body: TransactionsPatch):
+    try:
+        with psycopg.connect(
+            dbname=os.getenv("POSTGRES_DBNAME"),
+            host=os.getenv("POSTGRES_HOST"),
+            port=os.getenv("POSTGRES_PORT"),
+            user=os.getenv("POSTGRES_USER"),
+            password=os.getenv("POSTGRES_PASSWORD"),
+            autocommit=True,
+        ) as conn:
+            with conn.cursor() as cursor:
+                query = f"UPDATE transactions SET quantity = {body.quantity}, item = '{body.item}' WHERE transaction_id = '{body.uuid}';"
+                cursor.execute(query)
+                if cursor.rowcount == 0:
+                    return {
+                        "data": {
+                            "message": f"Transaction '{body.uuid}' not found, nothing updated"
+                        }
+                    }
 
         return {
             "data": {
-                "message": "Delete successful",
-                "item": item,
-                "description": description,
-                "price": price,
+                "message": "Update successful",
+                "transaction_id": body.uuid,
+                "item": body.item,
+                "quantity": body.quantity,
             }
         }
     except Exception as e:
-        return HTTPException(500, "There was an error, try again later.")
-
-
-# @app.put("/transactions")
-# def update_order():
-#     pass
+        raise HTTPException(status_code=500, detail=f"There was an error: {str(e)}")
