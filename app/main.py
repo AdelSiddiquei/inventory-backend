@@ -31,6 +31,7 @@ class TransactionsPost(BaseModel):
     item: str
     quantity: int
 
+
 class TransactionsPatch(BaseModel):
     uuid: UUID
     item: str
@@ -201,14 +202,18 @@ def remove_order(transaction_id):
             autocommit=True,
         ) as conn:
             with conn.cursor() as cursor:
-                query = f"DELETE FROM transactions WHERE transaction_id = {transaction_id}"
+                query = (
+                    f"DELETE FROM transactions WHERE transaction_id = {transaction_id}"
+                )
                 cursor.execute(query)
                 if cursor.rowcount == 0:
                     return {
                         "data": {"message": f"Item '{item}' not found, nothing deleted"}
                     }
 
-        return {"data": {"message": "Delete successful", "transaction_id": transaction_id}}
+        return {
+            "data": {"message": "Delete successful", "transaction_id": transaction_id}
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"There was an error: {str(e)}")
 
